@@ -1,2 +1,3 @@
 # asyncron
-Asyncronous execution of cron jobs
+
+Asynchronous execution of cron jobs
