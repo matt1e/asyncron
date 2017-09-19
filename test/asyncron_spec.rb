@@ -15,7 +15,7 @@ end
 describe "asyncron" do
   before do
     @callback = "Callbacker.callback"
-    @payload = {moo: "bar"}
+    @payload = {expr: "* * * * * *", moo: "bar"}
     @redis = Asyncron::DEFAULT_OPTS[:redis]
     @key = Asyncron.key({}, @callback)
   end
@@ -32,7 +32,7 @@ describe "asyncron" do
       assert_nil @redis.zscore(@key, @payload.to_json)
       t = Time.now
       t = Time.new(t.year, t.month, t.day, t.hour, t.min).to_i + 60
-      Asyncron.insert("* * * * * *", @callback, @payload)
+      Asyncron.insert(@callback, @payload)
       assert_equal t, @redis.zscore(@key, @payload.to_json)
     end
   end
@@ -52,6 +52,27 @@ describe "asyncron" do
       ran = false
       Callbacker.with(->(payload) { ran = true; }) { Asyncron.due }
       refute ran
+    end
+
+    it "adds the payload for the next execution again after running" do
+      @redis.zadd(@key, Time.now.to_i, @payload.to_json)
+      ran = false
+      Callbacker.with(->(payload) { ran = true; }) { Asyncron.due }
+      assert ran
+      t = Time.now
+      t = Time.new(t.year, t.month, t.day, t.hour, t.min).to_i + 60
+      assert_equal t, @redis.zscore(@key, @payload.to_json)
+    end
+  end
+
+  describe "remove" do
+    it "returns true when removal was successful" do
+      @redis.zadd(@key, Time.now.to_i + 5, @payload.to_json)
+      assert Asyncron.remove(@callback, @payload)
+    end
+
+    it "returns false when removal was unsuccessful" do
+      refute Asyncron.remove(@callback, @payload)
     end
   end
 end

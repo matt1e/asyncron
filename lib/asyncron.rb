@@ -14,10 +14,13 @@ module Asyncron
     key: "sorted_set_asyncron/%{callback_str}"
   }
 
-  def insert(opts = {}, expr, callback_str, payload)
-    time = Schedule.next(expr)
+  def insert(opts = {}, callback_str, payload)
+    unless payload.key?(:expr)
+      raise RuntimeError.new("#{payload.inspect} has no :expr key")
+    end
+    time = Schedule.next(payload[:expr])
     if time.nil?
-      raise RuntimeError.new("#{expr} for #{callback_str} and " \
+      raise RuntimeError.new("#{payload[:expr]} for #{callback_str} and " \
         "#{payload.inspect} has no future execution time")
     end
     set_key = key(opts, callback_str)
@@ -25,13 +28,19 @@ module Asyncron
     return redis(opts).zadd(set_key, time.to_i, payload.to_json)
   end
 
+  def remove(opts = {}, callback_str, payload)
+    redis(opts).zrem(key(opts, callback_str), payload.to_json)
+  end
+
   def due(opts = {})
     t = Time.now
     redis(opts).keys(key(opts, "*")).each do |set_key|
       cb = callback(set_key.split("/").last)
       redis(opts).zrangebyscore(set_key, 0, t.to_i).each do |payload|
-        cb.call(JSON.parse(payload, symbolize_names: true))
+        parsed_payload = JSON.parse(payload, symbolize_names: true)
+        cb.call(parsed_payload)
         redis(opts).zrem(set_key, payload)
+        insert(opts, set_key.split("/").last, parsed_payload)
       end
     end
   end
